@@ -4,9 +4,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'post_screen.dart';
 import 'login_screen.dart';
 
-class FeedScreen extends StatelessWidget {
+class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
+  @override
+  State<FeedScreen> createState() => _FeedScreenState();
+}
+
+class _FeedScreenState extends State<FeedScreen> {
   String _getRelativeTime(Timestamp? timestamp) {
     if (timestamp == null) return 'Just now';
 
@@ -80,220 +85,267 @@ class FeedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Feed'),
-        actions: [
-          IconButton(
-            onPressed: () => _handleLogout(context),
-            icon: const Icon(Icons.logout),
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Feed'),
+          actions: [
+            IconButton(
+              onPressed: () => _handleLogout(context),
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'All'),
+              Tab(text: 'Announcements'),
+              Tab(text: 'Lost & Found'),
+            ],
           ),
-        ],
+        ),
+        body: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('posts')
+              .orderBy('timestamp', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+
+            final allPosts = snapshot.data?.docs ?? [];
+
+            return TabBarView(
+              children: [
+                // Tab 0: All posts
+                _buildPostList(
+                  context,
+                  allPosts,
+                  'No posts yet',
+                  'Be the first to create a post!',
+                ),
+                // Tab 1: Announcements only
+                _buildPostList(
+                  context,
+                  allPosts
+                      .where(
+                        (doc) =>
+                            (doc.data() as Map<String, dynamic>)['type'] ==
+                            'announcement',
+                      )
+                      .toList(),
+                  'No announcements yet',
+                  'Check back later for updates',
+                ),
+                // Tab 2: Lost & Found only
+                _buildPostList(
+                  context,
+                  allPosts
+                      .where(
+                        (doc) =>
+                            (doc.data() as Map<String, dynamic>)['type'] ==
+                            'lost_found',
+                      )
+                      .toList(),
+                  'No lost or found items yet',
+                  'Report a lost or found item to get started',
+                ),
+              ],
+            );
+          },
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PostScreen()),
+            );
+          },
+          child: const Icon(Icons.add),
+        ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('posts')
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    );
+  }
 
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
+  Widget _buildPostList(
+    BuildContext context,
+    List<QueryDocumentSnapshot> posts,
+    String emptyTitle,
+    String emptySubtitle,
+  ) {
+    if (posts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.post_add, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              emptyTitle,
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            SizedBox(height: 8),
+            Text(emptySubtitle, style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
 
-          final posts = snapshot.data?.docs ?? [];
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 700),
+        child: ListView.builder(
+          padding: const EdgeInsets.all(8),
+          itemCount: posts.length,
+          itemBuilder: (context, index) {
+            final post = posts[index].data() as Map<String, dynamic>;
+            final timestamp = post['timestamp'] as Timestamp?;
+            final type = post['type'] as String? ?? 'unknown';
+            final category = post['category'] as String? ?? 'general';
+            final title = post['title'] as String? ?? '';
+            final description = post['description'] as String? ?? '';
+            final postedByName = post['postedByName'] as String? ?? 'Anonymous';
+            final postedBy = post['postedBy'] as String? ?? '';
+            final resolved = post['resolved'] as bool? ?? false;
+            final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+            final isCurrentUserPoster = postedBy == currentUserId;
+            final isLostFound = type == 'lost_found';
 
-          if (posts.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.post_add, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No posts yet',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
+            // Determine opacity: resolved posts get 0.6, unresolved get 1.0
+            final cardOpacity = resolved ? 0.6 : 1.0;
+
+            return Opacity(
+              opacity: cardOpacity,
+              child: Card(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Type and Category chips + Resolved badge
+                      Row(
+                        children: [
+                          Chip(
+                            label: Text(
+                              type == 'announcement'
+                                  ? 'Announcement'
+                                  : 'Lost & Found',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            backgroundColor: type == 'announcement'
+                                ? Colors.orange
+                                : Colors.deepOrange,
+                          ),
+                          const SizedBox(width: 8),
+                          Chip(
+                            label: Text(
+                              _getCategoryLabel(category),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            backgroundColor: _getCategoryColor(category),
+                          ),
+                          if (isLostFound && resolved)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Chip(
+                                label: const Text(
+                                  'Resolved',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                backgroundColor: Colors.grey[600],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Title
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      // Description
+                      Text(
+                        description,
+                        style: const TextStyle(fontSize: 14),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 12),
+                      // Footer with user and time
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            postedByName,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            _getRelativeTime(timestamp),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // "Mark as Resolved" button for lost_found posts
+                      if (isLostFound && !resolved && isCurrentUserPoster)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () async {
+                                try {
+                                  await posts[index].reference.update({
+                                    'resolved': true,
+                                  });
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error: ${e.toString()}'),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              child: const Text('Mark as Resolved'),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Be the first to create a post!',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ],
+                ),
               ),
             );
-          }
-
-          return Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 700),
-              child: ListView.builder(
-                padding: const EdgeInsets.all(8),
-                itemCount: posts.length,
-                itemBuilder: (context, index) {
-                  final post = posts[index].data() as Map<String, dynamic>;
-                  final timestamp = post['timestamp'] as Timestamp?;
-                  final type = post['type'] as String? ?? 'unknown';
-                  final category = post['category'] as String? ?? 'general';
-                  final title = post['title'] as String? ?? '';
-                  final description = post['description'] as String? ?? '';
-                  final postedByName =
-                      post['postedByName'] as String? ?? 'Anonymous';
-                  final postedBy = post['postedBy'] as String? ?? '';
-                  final resolved = post['resolved'] as bool? ?? false;
-                  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-                  final isCurrentUserPoster = postedBy == currentUserId;
-                  final isLostFound = type == 'lost_found';
-
-                  // Determine opacity: resolved posts get 0.6, unresolved get 1.0
-                  final cardOpacity = resolved ? 0.6 : 1.0;
-
-                  return Opacity(
-                    opacity: cardOpacity,
-                    child: Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Type and Category chips + Resolved badge
-                            Row(
-                              children: [
-                                Chip(
-                                  label: Text(
-                                    type == 'announcement'
-                                        ? 'Announcement'
-                                        : 'Lost & Found',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  backgroundColor: type == 'announcement'
-                                      ? Colors.orange
-                                      : Colors.deepOrange,
-                                ),
-                                const SizedBox(width: 8),
-                                Chip(
-                                  label: Text(
-                                    _getCategoryLabel(category),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  backgroundColor: _getCategoryColor(category),
-                                ),
-                                if (isLostFound && resolved)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 8),
-                                    child: Chip(
-                                      label: const Text(
-                                        'Resolved',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      backgroundColor: Colors.grey[600],
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            // Title
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 8),
-                            // Description
-                            Text(
-                              description,
-                              style: const TextStyle(fontSize: 14),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 12),
-                            // Footer with user and time
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  postedByName,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                Text(
-                                  _getRelativeTime(timestamp),
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            // "Mark as Resolved" button for lost_found posts
-                            if (isLostFound && !resolved && isCurrentUserPoster)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 12),
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed: () async {
-                                      try {
-                                        await posts[index].reference.update({
-                                          'resolved': true,
-                                        });
-                                      } catch (e) {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                'Error: ${e.toString()}',
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                                    child: const Text('Mark as Resolved'),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const PostScreen()),
-          );
-        },
-        child: const Icon(Icons.add),
+          },
+        ),
       ),
     );
   }
