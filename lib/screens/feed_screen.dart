@@ -127,102 +127,162 @@ class FeedScreen extends StatelessWidget {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: posts.length,
-            itemBuilder: (context, index) {
-              final post = posts[index].data() as Map<String, dynamic>;
-              final timestamp = post['timestamp'] as Timestamp?;
-              final type = post['type'] as String? ?? 'unknown';
-              final category = post['category'] as String? ?? 'general';
-              final title = post['title'] as String? ?? '';
-              final description = post['description'] as String? ?? '';
-              final postedByName =
-                  post['postedByName'] as String? ?? 'Anonymous';
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: ListView.builder(
+                padding: const EdgeInsets.all(8),
+                itemCount: posts.length,
+                itemBuilder: (context, index) {
+                  final post = posts[index].data() as Map<String, dynamic>;
+                  final timestamp = post['timestamp'] as Timestamp?;
+                  final type = post['type'] as String? ?? 'unknown';
+                  final category = post['category'] as String? ?? 'general';
+                  final title = post['title'] as String? ?? '';
+                  final description = post['description'] as String? ?? '';
+                  final postedByName =
+                      post['postedByName'] as String? ?? 'Anonymous';
+                  final postedBy = post['postedBy'] as String? ?? '';
+                  final resolved = post['resolved'] as bool? ?? false;
+                  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+                  final isCurrentUserPoster = postedBy == currentUserId;
+                  final isLostFound = type == 'lost_found';
 
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Type and Category chips
-                      Row(
-                        children: [
-                          Chip(
-                            label: Text(
-                              type == 'announcement'
-                                  ? 'Announcement'
-                                  : 'Lost & Found',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
+                  // Determine opacity: resolved posts get 0.6, unresolved get 1.0
+                  final cardOpacity = resolved ? 0.6 : 1.0;
+
+                  return Opacity(
+                    opacity: cardOpacity,
+                    child: Card(
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Type and Category chips + Resolved badge
+                            Row(
+                              children: [
+                                Chip(
+                                  label: Text(
+                                    type == 'announcement'
+                                        ? 'Announcement'
+                                        : 'Lost & Found',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  backgroundColor: type == 'announcement'
+                                      ? Colors.orange
+                                      : Colors.deepOrange,
+                                ),
+                                const SizedBox(width: 8),
+                                Chip(
+                                  label: Text(
+                                    _getCategoryLabel(category),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  backgroundColor: _getCategoryColor(category),
+                                ),
+                                if (isLostFound && resolved)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 8),
+                                    child: Chip(
+                                      label: const Text(
+                                        'Resolved',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      backgroundColor: Colors.grey[600],
+                                    ),
+                                  ),
+                              ],
                             ),
-                            backgroundColor: type == 'announcement'
-                                ? Colors.orange
-                                : Colors.deepOrange,
-                          ),
-                          const SizedBox(width: 8),
-                          Chip(
-                            label: Text(
-                              _getCategoryLabel(category),
+                            const SizedBox(height: 12),
+                            // Title
+                            Text(
+                              title,
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
                               ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            backgroundColor: _getCategoryColor(category),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      // Title
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                            const SizedBox(height: 8),
+                            // Description
+                            Text(
+                              description,
+                              style: const TextStyle(fontSize: 14),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 12),
+                            // Footer with user and time
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  postedByName,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  _getRelativeTime(timestamp),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            // "Mark as Resolved" button for lost_found posts
+                            if (isLostFound && !resolved && isCurrentUserPoster)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: () async {
+                                      try {
+                                        await posts[index].reference.update({
+                                          'resolved': true,
+                                        });
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Error: ${e.toString()}',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    child: const Text('Mark as Resolved'),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 8),
-                      // Description
-                      Text(
-                        description,
-                        style: const TextStyle(fontSize: 14),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 12),
-                      // Footer with user and time
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            postedByName,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          Text(
-                            _getRelativeTime(timestamp),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                    ),
+                  );
+                },
+              ),
+            ),
           );
         },
       ),

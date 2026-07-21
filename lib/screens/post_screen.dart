@@ -144,7 +144,7 @@ class _PostScreenState extends State<PostScreen> {
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value: _category,
+                    initialValue: _category,
                     hint: const Text('Select a category'),
                     items:
                         (_postType == 'announcement'
