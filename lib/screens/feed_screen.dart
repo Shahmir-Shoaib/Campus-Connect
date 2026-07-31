@@ -14,6 +14,8 @@ class FeedScreen extends StatefulWidget {
 
 class _FeedScreenState extends State<FeedScreen> {
   bool _isAdmin = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -42,6 +44,24 @@ class _FeedScreenState extends State<FeedScreen> {
         _isAdmin = false;
       });
     }
+  }
+
+  bool _matchesSearch(Map<String, dynamic> post) {
+    if (_searchQuery.isEmpty) return true;
+    final title = (post['title'] as String?)?.toLowerCase() ?? '';
+    final description = (post['description'] as String?)?.toLowerCase() ?? '';
+    return title.contains(_searchQuery) || description.contains(_searchQuery);
+  }
+
+  List<QueryDocumentSnapshot> _filterPosts(
+    List<QueryDocumentSnapshot> posts, {
+    String? type,
+  }) {
+    return posts.where((doc) {
+      final post = doc.data() as Map<String, dynamic>;
+      final matchesType = type == null || post['type'] == type;
+      return matchesType && _matchesSearch(post);
+    }).toList();
   }
 
   String _getRelativeTime(Timestamp? timestamp) {
@@ -83,6 +103,12 @@ class _FeedScreenState extends State<FeedScreen> {
 
   String _getCategoryLabel(String category) {
     return category.replaceFirst(category[0], category[0].toUpperCase());
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _handleLogout(BuildContext context) {
@@ -162,40 +188,63 @@ class _FeedScreenState extends State<FeedScreen> {
 
             final allPosts = snapshot.data?.docs ?? [];
 
-            return TabBarView(
+            return Column(
               children: [
-                // Tab 0: All posts
-                _buildPostList(
-                  context,
-                  allPosts,
-                  'No posts yet',
-                  'Be the first to create a post!',
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase().trim();
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search posts',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                setState(() {
+                                  _searchController.clear();
+                                  _searchQuery = '';
+                                });
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
-                // Tab 1: Announcements only
-                _buildPostList(
-                  context,
-                  allPosts
-                      .where(
-                        (doc) =>
-                            (doc.data() as Map<String, dynamic>)['type'] ==
-                            'announcement',
-                      )
-                      .toList(),
-                  'No announcements yet',
-                  'Check back later for updates',
-                ),
-                // Tab 2: Lost & Found only
-                _buildPostList(
-                  context,
-                  allPosts
-                      .where(
-                        (doc) =>
-                            (doc.data() as Map<String, dynamic>)['type'] ==
-                            'lost_found',
-                      )
-                      .toList(),
-                  'No lost or found items yet',
-                  'Report a lost or found item to get started',
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      // Tab 0: All posts
+                      _buildPostList(
+                        context,
+                        _filterPosts(allPosts),
+                        'No posts yet',
+                        'Be the first to create a post!',
+                      ),
+                      // Tab 1: Announcements only
+                      _buildPostList(
+                        context,
+                        _filterPosts(allPosts, type: 'announcement'),
+                        'No announcements yet',
+                        'Check back later for updates',
+                      ),
+                      // Tab 2: Lost & Found only
+                      _buildPostList(
+                        context,
+                        _filterPosts(allPosts, type: 'lost_found'),
+                        'No lost or found items yet',
+                        'Report a lost or found item to get started',
+                      ),
+                    ],
+                  ),
                 ),
               ],
             );
@@ -221,18 +270,22 @@ class _FeedScreenState extends State<FeedScreen> {
     String emptySubtitle,
   ) {
     if (posts.isEmpty) {
+      final noResults = _searchQuery.isNotEmpty;
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.post_add, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
-              emptyTitle,
-              style: TextStyle(fontSize: 18, color: Colors.grey),
+              noResults ? 'No results found' : emptyTitle,
+              style: const TextStyle(fontSize: 18, color: Colors.grey),
             ),
-            SizedBox(height: 8),
-            Text(emptySubtitle, style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 8),
+            Text(
+              noResults ? 'Try a different search term' : emptySubtitle,
+              style: const TextStyle(color: Colors.grey),
+            ),
           ],
         ),
       );
