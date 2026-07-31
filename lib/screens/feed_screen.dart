@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'post_screen.dart';
 import 'login_screen.dart';
+import 'profile_screen.dart';
 import 'admin_stats_screen.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -159,6 +160,15 @@ class _FeedScreenState extends State<FeedScreen> {
                 },
                 icon: const Icon(Icons.bar_chart),
               ),
+            IconButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              },
+              icon: const Icon(Icons.person),
+            ),
             IconButton(
               onPressed: () => _handleLogout(context),
               icon: const Icon(Icons.logout),
