@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'post_screen.dart';
 import 'login_screen.dart';
+import 'admin_stats_screen.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -122,6 +123,16 @@ class _FeedScreenState extends State<FeedScreen> {
         appBar: AppBar(
           title: const Text('Feed'),
           actions: [
+            if (_isAdmin)
+              IconButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AdminStatsScreen()),
+                  );
+                },
+                icon: const Icon(Icons.bar_chart),
+              ),
             IconButton(
               onPressed: () => _handleLogout(context),
               icon: const Icon(Icons.logout),
