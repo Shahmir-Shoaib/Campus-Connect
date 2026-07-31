@@ -95,7 +95,11 @@ class _PostScreenState extends State<PostScreen> {
         ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -188,7 +192,7 @@ class _PostScreenState extends State<PostScreen> {
                         ? 'Enter description'
                         : null,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _submit,
                     child: const Text('Create Post'),
